@@ -9,7 +9,14 @@ export const queueConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: isInvalidProdRedis ? 0 : null,
   enableReadyCheck: false,
   lazyConnect: true,
-  connectTimeout: isInvalidProdRedis ? 1000 : 10000
+  connectTimeout: isInvalidProdRedis ? 1000 : 10000,
+  family: 0, // Force IPv4/IPv6 resolution for Vercel + Upstash
+  retryStrategy(times) {
+    if (times > 3) {
+      return null; // Stop retrying after 3 attempts to prevent hanging API routes
+    }
+    return Math.min(times * 50, 2000);
+  }
 })
 
 queueConnection.on("error", (err) => {
