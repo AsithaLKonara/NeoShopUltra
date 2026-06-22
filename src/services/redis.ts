@@ -9,9 +9,9 @@ let redisSub: Redis | null = null
 // Initialize ioredis clients if host target URL is defined in env parameters
 if (redisUrl) {
   try {
-    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: 3 })
-    redisPub = new Redis(redisUrl, { maxRetriesPerRequest: 3 })
-    redisSub = new Redis(redisUrl, { maxRetriesPerRequest: 3 })
+    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: 3, family: 0 })
+    redisPub = new Redis(redisUrl, { maxRetriesPerRequest: 3, family: 0 })
+    redisSub = new Redis(redisUrl, { maxRetriesPerRequest: 3, family: 0 })
     
     redisClient.on("error", (err) => console.error("Redis client connection error:", err))
   } catch (err) {
@@ -89,24 +89,33 @@ const localMemoryMock = new MemoryRedisMock()
 export async function redisSet<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
   const stringValue = typeof value === "string" ? value : JSON.stringify(value)
   
-  if (redisClient) {
-    if (ttlSeconds) {
-      await redisClient.set(key, stringValue, "EX", ttlSeconds)
+  try {
+    if (redisClient) {
+      if (ttlSeconds) {
+        await redisClient.set(key, stringValue, "EX", ttlSeconds)
+      } else {
+        await redisClient.set(key, stringValue)
+      }
     } else {
-      await redisClient.set(key, stringValue)
+      await localMemoryMock.set(key, stringValue, ttlSeconds ? "EX" : undefined, ttlSeconds)
     }
-  } else {
-    await localMemoryMock.set(key, stringValue, ttlSeconds ? "EX" : undefined, ttlSeconds)
+  } catch (err) {
+    console.warn("Redis SET failed:", err)
   }
 }
 
 export async function redisGet<T>(key: string): Promise<T | null> {
   let valueStr: string | null = null
 
-  if (redisClient) {
-    valueStr = await redisClient.get(key)
-  } else {
-    valueStr = await localMemoryMock.get(key)
+  try {
+    if (redisClient) {
+      valueStr = await redisClient.get(key)
+    } else {
+      valueStr = await localMemoryMock.get(key)
+    }
+  } catch (err) {
+    console.warn("Redis GET failed, returning null:", err)
+    return null
   }
 
   if (!valueStr) return null
@@ -119,10 +128,14 @@ export async function redisGet<T>(key: string): Promise<T | null> {
 }
 
 export async function redisDel(key: string): Promise<void> {
-  if (redisClient) {
-    await redisClient.del(key)
-  } else {
-    await localMemoryMock.del(key)
+  try {
+    if (redisClient) {
+      await redisClient.del(key)
+    } else {
+      await localMemoryMock.del(key)
+    }
+  } catch (err) {
+    console.warn("Redis DEL failed:", err)
   }
 }
 
